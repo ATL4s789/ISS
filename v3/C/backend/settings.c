@@ -64,12 +64,14 @@ int main(int argc, char ** argv){
 			puts("<table class='pure-table pure-table-bordered'>\n\
 				<tr><td>Klasse:<td>\n\
 						<select style='border: 2px solid grey; border-radius: .5em; background-color: white;' id='grade' onchange='toggleLetter();'>\n\
+							<option value='7'>7</option>\n\
+							<option value='8'>8</option>\n\
 							<option value='9'>9</option>\n\
 							<option value='10'>10</option>\n\
 							<option selected='selected' value='11'>11</option>\n\
 							<option value='12'>12</option>\n\
 						</select>\n\
-						<select style='border: 2px solid grey; border-radius: .5em; background-color: white; display: none;' id='letter'>\n\
+						<select style='border: 2px solid grey; border-radius: .5em; background-color: white; display: none;' id='letter' onchange='toggleLetter();'>\n\
 							<option selected='selected' value='a'>a</option>\n\
 							<option value='b'>b</option>\n\
 							<option value='c'>c</option>\n\
@@ -81,7 +83,7 @@ int main(int argc, char ** argv){
 						</td>\n\
 						</tr>\n\
 			<tr>\n\
-			<td>Kursname suchen:</td> <td><input id='search-string' onkeydown='if (event.keyCode == 13)searchString(null); ' type='text'>");
+			<td>Kursname suchen:</td> <td><input id='search-string' onfocus='textBoxReset();' onkeydown='if (event.keyCode == 13)searchString(null);' type='text'>");
 					puts("  <button id='stringFilterButton' style='border: 2px solid grey; background-color: white;' onclick='searchString(this);' >suchen</button></td>\n\
 			</tr>\n\
 			</table>");
@@ -105,9 +107,9 @@ int main(int argc, char ** argv){
 			puts("</div>"); // zu 'courses'
 			//Die Sicherheitsabfrage soll erst dann sichtbar sein, wenn der Nutzer bereits Kurse eingestellt hat
 			if(strcmp(check_person.courses, "n/a") != 0 || strlen(check_person.courses)>1){
-					puts("<input onclick='toggleId(this, \"btn_save\");' type='checkbox' id='really' name='really'><label for='really'>Wirklich bereits eingestellte Kurse Ver&auml;ndern?</label>");
+					puts("<input onclick='toggleId(this, \"btn_save_course\");' type='checkbox' id='really' name='really'><label for='really'>Wirklich bereits eingestellte Kurse Ver&auml;ndern?</label>");
 			}
-			printf("<br><input id='btn_save' class='submitButton' %s type='submit' value='Speichern'>",
+			printf("<br><input id='btn_save_course' class='submitButton' %s type='submit' value='Speichern'>",
 					strcmp(check_person.courses, "n/a") != 0 ? "onload=\"this.style.display='none';\"" : ""); //style='display: block;'
 
 			puts("</form>");
@@ -115,20 +117,49 @@ int main(int argc, char ** argv){
 
 			// E-Mail-Einstellungen
 			printf("<h2>%s E-Mail-Adresse</h2>", check_person.isTeacher ? "Ihre" : "Deine");
-			puts("<div id='emailSettings'");
+			puts("<div id='emailSettings'>");
 			printf("<span>%s</span>", check_person.email);
 			printf("<form action='https://%s/cgi-bin/settings.cgi?email_update=change' method='POST'>\n", datCGI.http_host);
-			printf("<input type='email'required=""  onblur='checkDatEmail(this);' name='new_email' id='email' value='%s' placeholder='Ihre E-Mail-Adresse'>\n", check_person.email);
-			puts("<input id='btn_save' class='submitButton' type='submit' value='Speichern'>\n");
+			printf("<input type='email' required=""  onblur='checkDatEmail(this);' name='new_email' id='email' value='%s' placeholder='%s E-Mail-Adresse'>\n", check_person.email, check_person.isTeacher ? "Ihre" : "Deine");
+			puts("<br><input id='btn_save_email' class='submitButton' type='submit' value='Speichern'>\n");
 			puts("</form>\n");
 
 			puts("</div>"); // zu emailSettings
 
+
+			//Passwort-Einstellungen (von ATL4s789)
+			printf("<h2>%s Passwort</h2>", check_person.isTeacher ? "Ihr" : "Dein");
+			puts("<div id='passwordSettings'>\n\
+	<br>\n\
+	<form action='/cgi-bin/settings.cgi?password_update=change' method='POST'>\n\
+		<span>altes Passwort</span>\n\
+		<br>\n\
+		<input required class='settings-input' name='pass_old' id='pass_old' placeholder='altes Passwort' type='password'>\n\
+		<br>\n\
+		<span>neues Passwort</span>\n\
+		<br>\n\
+		<input required onkeyup=\"pruefStaerke(this.value)\" onkeydown=\"pruefStaerke(this.value)\" onchange=\"pruefStaerke(this.value)\" class='settings-input' name='pass_new_1' id='pass_new_1' placeholder='neues Passwort' type='password'>\n\
+					<br>\n\
+		<progress id='resultat' class='settings-input' value=0 max=100 style='width: 226px; border: 2px solid;'></progress>\n\
+		<br>\n\
+		<span>neues Passwort bestätigen</span>\n\
+		<br>\n\
+		<input required class='settings-input' name='pass_new_2' id='pass_new_2' placeholder='neues Passwort bestätigen' type='password'>\n\
+		<br>\n\
+		<input id='btn_save' class='submitButton' value='Speichern' type='submit'>\n\
+	</form>\n\
+</div>");
+
+
+
+			puts("<!-- WÖRKARAUND für js-onload -->\n\
+					<img src='/img/Arrow-Download-4-icon.png' style='display: none; width: 0px; heigth: 0px;' onload=\"document.getElementById('btn_save_course').style.display='none';\">");
 			puts("</div>");  //zu content
 			puts("</div></div>"); //immer da
 			puts("</body></html>");
 
 		}else if(datCGI.request_method == BOTH){
+			bool return_to_settings=true; // soll der Nutzer nach einer erfolgreichen Änderung wieder zur Seite mit den Einstellungen umgeleitet werden?
 			//Die Einstellungen sollen verändern werden
 
 			if(extract_QUERY_data(&datCGI, "course_update", NULL) == 0){
@@ -172,7 +203,9 @@ int main(int argc, char ** argv){
 						char * error_message=NULL;
 
 						for(int i=num_courses; is_ok == NO_ERROR && i--;){
-
+							/**
+							Die Liste aller Stunden in der Woche holen und überprüfen, ob Stunden doppelt belegt sind
+							*/
 							char * current_course=*(arr_selected_courses+i);
 							course * current_course_set=NULL;
 							size_t num_new_courses=get_course(current_course, &current_course_set);
@@ -208,7 +241,9 @@ int main(int argc, char ** argv){
 								oldsize+=num_new_courses;
 							}
 
-
+							/**
+							Prüfen, ob ein Kurs schon von einem anderen Lehrer unterrichtet wird
+							*/
 							if(check_person.isTeacher && is_ok == NO_ERROR){
 								person possible_teacher;
 								init_person(&possible_teacher);
@@ -301,7 +336,7 @@ int main(int argc, char ** argv){
 
 
 							print_html_error(Meldung, "/cgi-bin/settings.cgi");
-							exit(EXIT_FAILURE);
+							exit(EXIT_FAILURE); //(kann doch weggelassen werden, oder?)
 						}
 					}
 				}
@@ -312,7 +347,9 @@ int main(int argc, char ** argv){
 			}
 
 			if(extract_QUERY_data(&datCGI, "email_update", NULL)==0){
-				//Person will ihre Email verändern
+				//Person will ihre E-Mail-Adresse verändern
+
+				return_to_settings=false;
 				char * new_email=NULL;
 
 				extract_POST_data(&datCGI, "new_email", &new_email);
@@ -321,6 +358,7 @@ int main(int argc, char ** argv){
 						print_html_error("Email existiert in der Datenbank bereits", "/cgi-bin/settings.cgi");
 						exit(0);
 					}else{
+						//TODO Bessere E-Mail-Adressen-Prüfung einbauen
                         if((strchr(new_email, '@') == strrchr(new_email, '@')) && strchr(new_email, '@')) {
 							//Der Nutzer hat eine Gültige E-Mail-Adresse (mit genau einem '@') eingegeben
 							//E-Mail-Adresse wir jetzt geändert
@@ -331,19 +369,61 @@ int main(int argc, char ** argv){
 
 							//Cookies neu setzen (da E-Mail jetzt anders)
 							httpSetCookie("EMAIL", new_email);
+							print_html_error("E-Mail-Adresse erfolgreich geändert!", "/cgi-bin/settings.cgi");
 							//httpSetCookie("SID", );
                         }else{
 							print_html_error("Geben sie eine Gültige E-Mail-Adresse ein!", "/cgi-bin/settings.cgi");
-							exit(EXIT_FAILURE);
                         }
 					}
 				}
 			}
 
+			if(extract_QUERY_data(&datCGI, "password_update", NULL)==0){
+				//Person will ihr Passwort verändern
+				return_to_settings=false;
+
+				char * pass_old=NULL;
+				char * pass_new_1=NULL;
+				char * pass_new_2=NULL;
+
+				extract_POST_data(&datCGI, "pass_old", &pass_old);
+				extract_POST_data(&datCGI, "pass_new_1", &pass_new_1);
+				extract_POST_data(&datCGI, "pass_new_2", &pass_new_2);
+				remove_newline(pass_new_1);
+				remove_newline(pass_new_2);
+				remove_newline(pass_old);
+
+				check_person.password=pass_old;
+				if(strcmp(pass_new_1, pass_new_2) == 0){
+					//Die neuen Passwörter wurden richtig eingegeben
+					if(strcmp(pass_new_1, pass_old) !=0){
+						//Neues Passwort ist anders als das Alte
+
+						if(verify_user_password(&check_person)){
+							//Person hat ihr aktuelles Passwort richtig eingegeben
+							free(check_person.password); check_person.password=NULL;
+							check_person.password=pass_new_1;
+
+							bool state=update_user_password(&check_person);
+
+
+							if(state)print_html_error("Passwort erfolgreich geändert!", "/cgi-bin/settings.cgi");
+						}else{
+							print_html_error("Passwort falsch!", "/cgi-bin/settings.cgi");
+						}
+					}
+
+				}else{
+					print_html_error("Die beiden Passwörter stimmen nicht überein", "/cgi-bin/settings.cgi");
+				}
+			}
+
 			//Den Nutzer wieder auf die Einstellungsseite umleiten
-			char * redirectString=NULL;
-			asprintf(&redirectString, "https://%s/cgi-bin/settings.cgi", datCGI.http_host);
-			httpRedirect(redirectString);
+			if(return_to_settings){
+				char * redirectString=NULL;
+				asprintf(&redirectString, "https://%s/cgi-bin/settings.cgi", datCGI.http_host);
+				httpRedirect(redirectString);
+			}
 		}
     }else{
 		fprintf(stderr, "Person nicht angemeldet: email: %s, sid: %s", s_sid, check_person.email);

@@ -44,6 +44,7 @@ typedef struct {
 	char * acronym;         // Kürzel der Person (falls vorhanden)
 	char * email;           // E-Mail-Adresse der Person
 	struct tm * login_time; // Zeit zu der sich der Nutzer angemeldet hat
+
 	bool auth;              // ist die Person authentifiziert
 	int sid;                // Session-ID
 	bool isTeacher;         // Lehrer ?
@@ -74,6 +75,7 @@ void init_person(person * p);
 void init_message(message * mes);
 void init_course(course * c);
 int verify_user(person * pers);
+bool verify_user_password(person * pers);
 bool detect_convert_acronym(person * pers);
 void uppercase_acr(person * pers);
 void insert_user(person * pers);
@@ -98,3 +100,4 @@ bool get_teacher_by_course(person * pers, char * c);
 void clean_string(char * str);
 char * nlcr_to_htmlbr(char * str);
 int comma_to_array(char * comma_char, char *** str_array);
+char * salt_extract(char * db_passwd);

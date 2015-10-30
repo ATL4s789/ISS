@@ -379,7 +379,7 @@ void print_html_pure_head_menu(char * descr, char * title, menuSelection menu){
 	}
 
 printf("<!doctype html>\n\
-<html lang='en'>\n\
+<html lang='de'>\n\
 <head>\n\
 <meta charset='utf-8'>\n\
 <meta name='viewport' content='width=device-width, initial-scale=1.0'>\n\
@@ -406,6 +406,8 @@ printf("<!doctype html>\n\
 <!-- Modified http://purecss.io/js/ui.js -->\n\
 <script src='/js/toggle.js'></script>\n\
 <script src='/js/filter.js'></script>\n\
+<script src='/js/good_passwd.js'></script>\n\
+<script src='/js/jquery.js'></script>\n\
 \n\
 </head>\n\
 <body>\n\
@@ -421,12 +423,12 @@ printf("<!doctype html>\n\
 	puts("<ul class='pure-menu-list'>\n");
 	if(menu == TIMETABLE){
 		puts("							<li class='pure-menu-item'>\n\
-											<a href='/cgi-bin/timetable.cgi' class='pure-menu-link pure-menu-selected'>Stundeplan</a>\n\
+											<a href='/cgi-bin/timetable.cgi' class='pure-menu-link pure-menu-selected'>Stundenplan</a>\n\
 										</li>\n\
 			");
 	}else{
         puts("							<li class='pure-menu-item'>\n\
-											<a href='/cgi-bin/timetable.cgi' class='pure-menu-link'>Stundeplan</a>\n\
+											<a href='/cgi-bin/timetable.cgi' class='pure-menu-link'>Stundenplan</a>\n\
                                         </li>\n\
 			");
 	}
@@ -514,6 +516,6 @@ void html_redirect_to_login(){
 	httpHeader(HTML);
 	print_html_head("Benutzung von Cookies", "Cookies");
 	puts("<body><h1>Sie sind nicht angemeldet</h1><br>Damit Sie sich anmelden können müssen Cookies aktiv sein!<br>");
-	printf("<a href='/index.html'>ZUR&Uuml;CK zur Anmeldung</a>");
+	printf("<a href='/eingang.html'>ZUR&Uuml;CK zur Anmeldung</a>");
 	exit(0);
 }

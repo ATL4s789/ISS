@@ -245,6 +245,90 @@ int verify_user(person * pers){
 	return user_state;
 }
 
+
+/** \brief Überprüfen ob das Passwort einer angemeldeten Person stimmt
+ *
+ * \param pers person*  Person, mit E-Mail-Adresse und SessionID
+ * \return bool         true: Passwort ist richtig; false: Passwort ist falsch
+ *
+ */
+bool verify_user_password(person * pers){
+	char * query=NULL;
+	bool password_state=false;
+	MYSQL * my=NULL;
+
+	if(pers->password == NULL || pers->sid==0){
+		print_exit_failure("Programm falsch (verify_user_password)");
+	}
+
+	if(asprintf(&query, "SELECT * FROM Benutzer WHERE sid='%d' AND email='%s'", pers->sid, pers->email) == -1){
+		print_exit_failure("Es konnte kein Speicher angefordert werden (verify_user_password)");
+	}
+
+	my=mysql_init(NULL);
+	if(my == NULL){
+		print_exit_failure("MYSQL init failure (verify_user_password)");
+	}
+
+	if(mysql_real_connect(my, "localhost", SQL_USER, SQL_PASS, SQL_BASE, 0, NULL, 0) == NULL){
+		print_exit_failure("MYSQL-connection error!");
+	}
+
+	if(mysql_query(my, query)){
+		print_exit_failure("mysql_query failed (verify_user_password)");
+		#ifdef DEBUG
+		fprintf(stderr, "sql_query:\n%s\nfailed\n", query);
+		#endif // DEBUG
+	}else{
+		MYSQL_RES * result=NULL;
+		result = mysql_store_result(my);
+
+		if(mysql_num_rows(result) == 1){
+			MYSQL_ROW * row=NULL;
+			row=mysql_fetch_row(result);
+			#ifdef DEBUG
+			fprintf(stderr, "Benutzer gefunden (verify_user_password)\n");
+			#endif // DEBUG
+			char * password_encrypted=NULL;
+			char * password_db=NULL;
+			char * salt=NULL;
+			password_db=row[COL_PASS];
+
+			salt=salt_extract(password_db);
+
+			char * arg=NULL;
+			asprintf(&arg, "$6$%s$", salt);
+			char * encr=crypt(pers->password, arg);
+			//free(pers->password);
+			asprintf(&password_encrypted, "%s%s", salt, encr+strlen(arg));
+
+			free(salt);
+			free(arg);
+			free(encr);
+
+			if(strcmp(password_db, password_encrypted) == 0){
+				#ifdef DEBUG
+				fprintf(stderr, "Passwort war richtig! (Benutzer: %s)", pers->email);
+				#endif // DEBUG
+				password_state=true;
+			}else{
+				password_state=false;
+			}
+
+
+		}else{
+			pers->auth=false;
+		}
+		mysql_free_result(result);
+	}
+
+    mysql_close(my);
+    free(query);
+
+    return password_state;
+
+}
+
 /** \brief Feststellen ob die E-mail möglicherweise ein Kürzel ist und ggf. Zuordnung ändern.
  *
  * \param pers person*  Personen-Struktur
@@ -297,6 +381,9 @@ void uppercase_acr(person * pers){
  * Das Passwort wird mithilfe von crypt() verschlüsselt
  */
 void insert_user(person * pers){
+	MYSQL *my=NULL;
+	char * query=NULL;
+
 	if(pers == NULL){
 		print_exit_failure("Programm falsch.\n Wörk!");
 	}
@@ -305,12 +392,12 @@ void insert_user(person * pers){
 		print_exit_failure("Benutzer Existiert schon!");
 	}
 
-	MYSQL *my=mysql_init(NULL);
+	my=mysql_init(NULL);
 	if(my == NULL){
 		print_exit_failure("MYSQL init failure\n Wörk!");
 	}
 
-	if(mysql_real_connect(my, "localhost", "root", "WUW", "base5", 0, NULL, 0) == NULL){
+	if(mysql_real_connect(my, "localhost", SQL_ALTERNATE_USER, SQL_ALTERNATE_PASS, SQL_BASE, 0, NULL, 0) == NULL){
 		print_exit_failure("MYSQL-connection error!");
 	}
 
@@ -332,7 +419,11 @@ void insert_user(person * pers){
 
 	//pers->password=encr+strlen(arg);
 
-	char * query=NULL;
+	clean_string(pers->first_name);
+	clean_string(pers->email);
+	clean_string(pers->name);
+
+
 	//Ist es eine Lehrer oder ein Schüler?
 	if(!pers->isTeacher){
 		if(asprintf(&query, "INSERT INTO Benutzer (vorname, name, email, passwort, kurse) \
@@ -342,6 +433,7 @@ void insert_user(person * pers){
 			print_exit_failure("Es konnte kein Speicher angefordert werden (insert_user)");
 		}
 	}else{
+		clean_string(pers->acronym);
 		if(asprintf(&query, "INSERT INTO Benutzer (vorname, name, email, passwort, kurse, kuerzel) \
 					VALUES('%s', '%s', '%s', '%s', 'n/a', '%s')",
 					pers->first_name, pers->name, pers->email, store_pw, pers->acronym) == -1)
@@ -401,6 +493,7 @@ bool salt_exists(char ** salt){
 	}
 
 	my=mysql_init(NULL);
+
 	if(my == NULL){
 		print_exit_failure("MYSQL init failure\n Wörk!");
 	}
@@ -659,6 +752,7 @@ bool sid_exists(int sid){
 bool sid_set_null(person * pers){
 	char * query=NULL;
 	MYSQL * my=NULL;
+	bool success=false;
 
 	if(asprintf(&query, "UPDATE Benutzer SET sid=NULL WHERE email='%s' AND sid='%d'", pers->email, pers->sid) == -1){
 		print_exit_failure("Es konnte kein Speicher angefordert werden (sid_set_null)");
@@ -677,14 +771,13 @@ bool sid_set_null(person * pers){
 		#ifdef DEBUG
 		fprintf(stderr, "sql_query:\n%s\nfailed\n", query);
 		#endif // DEBUG
-		mysql_close(my);
-		free(query);
-		return false;
+		success=false;
 	}else{
-		mysql_close(my);
-		free(query);
-		return true;
+		success=true;
 	}
+	mysql_close(my);
+	free(query);
+	return success;
 }
 
 /** \brief Überprüfen, ob ein bestimmter Nutzer ein SID hat
@@ -749,7 +842,6 @@ int get_messages(message ** mes, int offset, char * select_course){
 	char * query=NULL;
 	int num=0;
 	MYSQL * my=NULL;
-
 
 	if(select_course){
 		if(asprintf(&query, "SELECT * FROM Meldungen WHERE kurse REGEXP '(^|, )%s($|, )'  ORDER BY erstellt DESC LIMIT %d OFFSET %d", select_course, GET_MESSAGE_COUNT,(offset*GET_MESSAGE_COUNT)) == -1){
@@ -978,6 +1070,11 @@ bool get_person_by_sid(person * pers){
  *
  */
 bool insert_message(message * mes){
+	char * query=NULL;
+	char * time_created=NULL;
+	MYSQL * my=NULL;
+	bool success=false;
+
 	if(strlen(mes->title)<2 || strlen(mes->message)<2)print_exit_failure("Geben Sie eine Meldung ein!!");
 
 	clean_string(mes->message);
@@ -988,8 +1085,7 @@ bool insert_message(message * mes){
 	#endif // DEBUG
 	remove_newline(mes->message);
 
-	char * query=NULL;
-	char * time_created=calloc(21, sizeof(char)); // 20
+	time_created=calloc(21, sizeof(char)); // 20
 	strftime(time_created, 20, "%Y-%m-%d %H:%M:%S", mes->created);
 	//                           4  2  2  2  2  2 ---> ? 19 +1 (\0) --> 20 = ????
 
@@ -1003,7 +1099,7 @@ bool insert_message(message * mes){
 	fprintf(stderr, "\n\nQuery (insert_message) : '%s'\n\n", query);
 	#endif // DEBUG
 
-	MYSQL *my=mysql_init(NULL);
+	my=mysql_init(NULL);
 	if(my == NULL){
 		print_exit_failure("MYSQL init failure!");
 	}
@@ -1016,14 +1112,14 @@ bool insert_message(message * mes){
 		#ifdef DEBUG
 		fprintf(stderr, "sql_query:\n%s\nfailed\n", query);
 		#endif // DEBUG
-		mysql_close(my);
-		free(query);
-		return false;
+
+		success=false;
 	}else{
-		mysql_close(my);
-		free(query);
-		return true;
+		success=true;
 	}
+	mysql_close(my);
+	free(query);
+	return success;
 }
 
 /** \brief	Alle verfügbaren Kurse in alphabetischer Reihenfolge in dass Array "c" speichern
@@ -1034,11 +1130,14 @@ bool insert_message(message * mes){
  */
 size_t get_distinct_courses(course ** c){
 	char * query=NULL;
+	MYSQL *my=NULL;
+	size_t number=0;
+
 	if(asprintf(&query, "SELECT DISTINCT name FROM Kurse ORDER BY name") == -1){
 		print_exit_failure("Es konnte kein Speicher angefordert werden (get_all_courses)");
 	}
 
-	MYSQL *my=mysql_init(NULL);
+	my=mysql_init(NULL);
 	if(my == NULL){
 		print_exit_failure("MYSQL init failure!");
 	}
@@ -1051,11 +1150,9 @@ size_t get_distinct_courses(course ** c){
 		#ifdef DEBUG
 		fprintf(stderr, "sql_query:\n%s\nfailed\n", query);
 		#endif // DEBUG
-		mysql_close(my);
-		free(query);
-		return 0;
+		number=0;
 	}else{
-		size_t number=0;
+
 		MYSQL_RES * result=NULL;
 		result = mysql_store_result(my);
 
@@ -1070,10 +1167,11 @@ size_t get_distinct_courses(course ** c){
 				i++;
 			}
 		}
-		mysql_close(my);
-		free(query);
-		return number;
+		mysql_free_result(result);
 	}
+	mysql_close(my);
+	free(query);
+	return number;
 }
 
 /** \brief  Die Kursliste des Benutzers in die Datenbank schreiben
@@ -1083,16 +1181,19 @@ size_t get_distinct_courses(course ** c){
  *
  */
 bool update_user_courses(person * pers){
+	char * query=NULL;
+	MYSQL * my=NULL;
+	bool success=false;
+
 	if(pers->courses == NULL){
 		print_exit_failure("Programm falsch (update_user_courses)");
 	}
 
-	char * query=NULL;
 	if(asprintf(&query, "UPDATE Benutzer SET kurse='%s' WHERE id='%d' AND email='%s'", pers->courses, pers->id, pers->email) == -1){
 		print_exit_failure("Es konnte kein Speicher angefordert werden (update_user_courses)");
 	}
 
-	MYSQL *my=mysql_init(NULL);
+	my=mysql_init(NULL);
 	if(my == NULL){
 		print_exit_failure("MYSQL init failure!");
 	}
@@ -1105,14 +1206,13 @@ bool update_user_courses(person * pers){
 		#ifdef DEBUG
 		fprintf(stderr, "sql_query:\n%s\nfailed\n", query);
 		#endif // DEBUG
-		mysql_close(my);
-		free(query);
-		return false;
+		success=false;
 	}else{
-		mysql_close(my);
-		free(query);
-		return true;
+		success=true;
 	}
+	mysql_close(my);
+	free(query);
+	return success;
 }
 
 /** \brief  Die Kursliste des Benutzers in die Datenbank schreiben
@@ -1123,16 +1223,19 @@ bool update_user_courses(person * pers){
  *
  */
 bool update_user_email(person * pers, char * new_email){
+	char * query=NULL;
+	MYSQL *my=NULL;
+	bool success=false;
+
 	if(pers->email == NULL){
 		print_exit_failure("Programm falsch (update_user_email)");
 	}
 
-	char * query=NULL;
 	if(asprintf(&query, "UPDATE Benutzer SET email='%s' WHERE id='%d' AND email='%s'", new_email, pers->id, pers->email) == -1){
 		print_exit_failure("Es konnte kein Speicher angefordert werden (update_user_email)");
 	}
 
-	MYSQL *my=mysql_init(NULL);
+	my=mysql_init(NULL);
 	if(my == NULL){
 		print_exit_failure("MYSQL init failure!");
 	}
@@ -1145,14 +1248,75 @@ bool update_user_email(person * pers, char * new_email){
 		#ifdef DEBUG
 		fprintf(stderr, "sql_query:\n%s\nfailed\n", query);
 		#endif // DEBUG
-        mysql_close(my);
-        free(query);
-		return false;
+		success=false;
 	}else{
-		mysql_close(my);
-		free(query);
-		return true;
+		success=true;
 	}
+	mysql_close(my);
+	free(query);
+	return success;
+}
+
+/** \brief Das Passwort eines Nutzers ändern
+ *
+ * \param pers person*  Personen-Objekt, mit Passwort
+ * \return bool         true: Änderung erfolgreich; false: Änderung fehlgeschlagen
+ *
+ */
+bool update_user_password(person * pers){
+	char * query=NULL;
+	char * salt=NULL;
+	char * arg=NULL; // für crypt
+	char * store_pw=NULL;
+	MYSQL * my=NULL;
+	bool success=false;
+
+	if(pers->password == NULL){
+		print_exit_failure("Programm falsch (update_user_password)");
+	}
+
+
+	salt_generate(&salt);
+
+    //Verhindern, dass ein bereits vorhandenes Salt zweimal verwendet wird (falls zwei Nutzer identische Passwörter wählen)
+	while(salt_exists(&salt)){
+		salt_generate(&salt);
+	}
+	asprintf(&arg, "$6$%s$", salt);
+
+	char * encr=crypt(pers->password, arg);
+	asprintf(&store_pw, "%s%s", salt, encr+strlen(arg));
+	free(arg);
+	free(salt);
+	free(pers->password);
+
+
+	if(asprintf(&query, "UPDATE Benutzer SET passwort='%s' WHERE id='%d' AND email='%s'", store_pw, pers->id, pers->email) == -1){
+		print_exit_failure("Es konnte kein Speicher angefordert werden (update_user_password)");
+	}
+
+	my=mysql_init(NULL);
+	if(my == NULL){
+		print_exit_failure("MYSQL init failure!");
+	}
+
+	if(mysql_real_connect(my, "localhost", SQL_ALTERNATE_USER, SQL_ALTERNATE_PASS, SQL_BASE, 0, NULL, 0) == NULL){
+		print_exit_failure("MYSQL-connection error!");
+	}
+
+	if(mysql_query(my, query)){
+		#ifdef DEBUG
+		fprintf(stderr, "sql_query:\n%s\nfailed\n", query);
+		#endif // DEBUG
+
+		success=false;
+	}else{
+		success=true;
+	}
+
+	mysql_close(my);
+	free(query);
+	return success;
 }
 
 /** \brief Alle Vorkommen + Daten (Zeiten, Räume IDs) eines Kurses holen
@@ -1163,15 +1327,20 @@ bool update_user_email(person * pers, char * new_email){
  *
  */
 size_t get_course(char * this_course, course ** c_arr){
+
+	size_t number=0;
+	MYSQL *my=NULL;
+	char * query=NULL;
+
 	if(this_course==NULL || c_arr==NULL){
 		print_exit_failure("Programm falsch (get_course)");
 	}
-	char * query=NULL;
+
 	if(asprintf(&query, "SELECT * FROM Kurse WHERE name='%s'", this_course) == -1){
 		print_exit_failure("Es konnte kein Speicher angefordert werden (update_user_courses)");
 	}
 
-	MYSQL *my=mysql_init(NULL);
+	my=mysql_init(NULL);
 	if(my == NULL){
 		print_exit_failure("MYSQL init failure!");
 	}
@@ -1184,11 +1353,9 @@ size_t get_course(char * this_course, course ** c_arr){
 		#ifdef DEBUG
 		fprintf(stderr, "sql_query:\n%s\nfailed\n", query);
 		#endif // DEBUG
-		mysql_close(my);
-		free(query);
-		return 0;
+		number=0;
 	}else{
-		size_t number=0;
+
 		MYSQL_RES * result=NULL;
 		result = mysql_store_result(my);
 
@@ -1206,10 +1373,11 @@ size_t get_course(char * this_course, course ** c_arr){
 				i++;
 			}
 		}
-		mysql_close(my);
-		free(query);
-		return number;
+		mysql_free_result(result);
 	}
+	mysql_close(my);
+	free(query);
+	return number;
 }
 
 /** \brief Anhand einer Kursbezeichnung herausfinden, welcher Lehrer diesen unterrichtet
@@ -1221,16 +1389,18 @@ size_t get_course(char * this_course, course ** c_arr){
  *
  */
 bool get_teacher_by_course(person * pers, char * c){
+	char * query=NULL;
+	MYSQL * my=NULL;
+	bool success=false;
 	if(pers == NULL || c==NULL){
 		print_exit_failure("Programm falsch (get_teacher_by_course)");
 	}
 
-	char * query=NULL;
 	if(asprintf(&query, "SELECT * FROM Benutzer WHERE kurse REGEXP '(^|, )%s($|, )' AND kuerzel IS NOT NULL", c) == -1){
 		print_exit_failure("Es konnte kein Speicher angefordert werden (update_user_courses)");
 	}
 
-	MYSQL *my=mysql_init(NULL);
+	my=mysql_init(NULL);
 	if(my == NULL){
 		print_exit_failure("MYSQL init failure!");
 	}
@@ -1245,7 +1415,7 @@ bool get_teacher_by_course(person * pers, char * c){
 		#endif // DEBUG
 		mysql_close(my);
 		free(query);
-		return false;
+		success=false;
 	}else{
 		MYSQL_RES * result=NULL;
 		result = mysql_store_result(my);
@@ -1268,15 +1438,14 @@ bool get_teacher_by_course(person * pers, char * c){
 			pers->id=atoi(row[COL_ID]);
 
 			mysql_free_result(result);
-			mysql_close(my);
-			free(query);
-			return true;
+			success=true;
 
 		}
-		mysql_close(my);
-		free(query);
-		return false;
 	}
+	mysql_close(my);
+	free(query);
+
+	return success;
 }
 
 
@@ -1394,4 +1563,16 @@ int comma_to_array(char * comma_char, char *** str_array){
 	}
 	//str_array=local_str_array;
 	return j;
+}
+
+
+char * salt_extract(char * db_passwd){
+	char * salt=NULL;
+	if(db_passwd != NULL){
+		salt=calloc(SALT_LENGTH+1, sizeof(char));
+		for(int i=0; i<SALT_LENGTH; i++){
+			strncat(salt, db_passwd+i, 1);
+		}
+	}
+	return salt;
 }
